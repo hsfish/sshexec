@@ -284,3 +284,74 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 		return returnResult, nil
 	}
 }
+
+func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remoteFilePath string) ([]ExecResult, error) {
+	if len(sshParms) == 0 {
+		log.Println("no hosts")
+		return nil, errors.New("no hosts")
+	}
+	if s.Worker == 0 {
+		s.Worker = 40
+	}
+	if s.TimeOut == 0 {
+		s.TimeOut = 3600 * time.Second
+	}
+	auths := [][]ssh.AuthMethod{}
+	for _, sshParm := range sshParms {
+		authKey := InitSSHAuthMethod(sshParm.LoginType, sshParm.Password)
+		if len(authKey) == 0 {
+			log.Println("the user no key")
+			return nil, fmt.Errorf("the %v no password and no key", sshParm.IP)
+		}
+		auths = append(auths, authKey)
+	}
+
+	pool := grpool.NewPool(s.Worker, len(sshParms), s.TimeOut)
+	defer pool.Release()
+	pool.WaitCount(len(sshParms))
+	for i, sshParm := range sshParms {
+		count := i
+		pool.JobQueue <- grpool.Job{
+			Jobid: count,
+			Jobfunc: func() (interface{}, error) {
+				session := &HostSession{
+					Username: sshParm.Username,
+					Password: "",
+					Hostname: sshParm.Username,
+					Port:     sshParm.Port,
+					Auths:    auths[i],
+				}
+				r := session.Transfer(count, localFilePath, remoteFilePath, session.GenerateConfig())
+				return *r, nil
+			},
+		}
+	}
+
+	pool.WaitAll()
+	returnResult := make([]ExecResult, len(sshParms))
+	errorText := ""
+	for res := range pool.Jobresult {
+		jobId, _ := res.Jobid.(int)
+		if res.Timedout {
+			returnResult[jobId].Id = jobId
+			returnResult[jobId].Host = sshParms[jobId].IP
+			returnResult[jobId].LocalFilePath = localFilePath
+			returnResult[jobId].RemoteFilePath = remoteFilePath
+			returnResult[jobId].Error = errors.New("ssh time out")
+			errorText += "the host " + sshParms[jobId].IP + " commond  exec time out."
+		} else {
+			execResult, _ := res.Result.(ExecResult)
+			returnResult[jobId] = execResult
+			if execResult.Error != nil {
+				errorText += "the host " + execResult.Host + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
+			}
+		}
+	}
+	if errorText != "" {
+		return returnResult, errors.New(errorText)
+
+	} else {
+		return returnResult, nil
+	}
+
+}
