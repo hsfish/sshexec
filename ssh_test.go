@@ -151,6 +151,7 @@ c1exAOTSsdaKL3NDeeRkgcDDP9XKVMW7Kds17oVLR36wJ5y1CcmPtNAn
 	sshExecAgent := SSHExecAgent{}
 	sshExecAgent.Worker = 10
 	sshExecAgent.TimeOut = time.Duration(120) * time.Second
-	rs, err := sshExecAgent.SftpHost(sshParms, "/data/aaa.txt", "/data/aaa.txt")
+	t.Log(sshParms)
+	rs, err := sshExecAgent.SftpHost(sshParms, "/data/bbbb.txt", "/data/bbbb.txt")
 	t.Log(rs, err)
 }

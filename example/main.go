@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/sshexec"
+	"github.com/hsfish/sshexec"
 )
 
 func main() {

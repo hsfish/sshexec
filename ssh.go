@@ -237,12 +237,8 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 		auths = append(auths, authKey)
 	}
 
-	pool := grpool.NewPool(s.Worker, len(sshParms), s.TimeOut)
-	defer pool.Release()
-	pool.WaitCount(len(sshParms))
-	for i, sshParm := range sshParms {
-		count := i
-		pool.JobQueue <- grpool.Job{
+	initJob := func(count int, sshParm SSHParm, auth []ssh.AuthMethod) grpool.Job {
+		return grpool.Job{
 			Jobid: count,
 			Jobfunc: func() (interface{}, error) {
 				session := &HostSession{
@@ -250,12 +246,19 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 					Password: "",
 					Hostname: sshParm.IP,
 					Port:     sshParm.Port,
-					Auths:    auths[i],
+					Auths:    auth,
 				}
 				r := session.Exec(count, cmd, session.GenerateConfig())
 				return *r, nil
 			},
 		}
+	}
+
+	pool := grpool.NewPool(s.Worker, len(sshParms), s.TimeOut)
+	defer pool.Release()
+	pool.WaitCount(len(sshParms))
+	for i, _ := range sshParms {
+		pool.JobQueue <- initJob(i, sshParms[i], auths[i])
 	}
 
 	pool.WaitAll()
@@ -306,12 +309,8 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 		auths = append(auths, authKey)
 	}
 
-	pool := grpool.NewPool(s.Worker, len(sshParms), s.TimeOut)
-	defer pool.Release()
-	pool.WaitCount(len(sshParms))
-	for i, sshParm := range sshParms {
-		count := i
-		pool.JobQueue <- grpool.Job{
+	initJob := func(count int, sshParm SSHParm, auth []ssh.AuthMethod) grpool.Job {
+		return grpool.Job{
 			Jobid: count,
 			Jobfunc: func() (interface{}, error) {
 				session := &HostSession{
@@ -319,12 +318,19 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 					Password: "",
 					Hostname: sshParm.IP,
 					Port:     sshParm.Port,
-					Auths:    auths[i],
+					Auths:    auth,
 				}
 				r := session.Transfer(count, localFilePath, remoteFilePath, session.GenerateConfig())
 				return *r, nil
 			},
 		}
+	}
+
+	pool := grpool.NewPool(s.Worker, len(sshParms), s.TimeOut)
+	defer pool.Release()
+	pool.WaitCount(len(sshParms))
+	for i, _ := range sshParms {
+		pool.JobQueue <- initJob(i, sshParms[i], auths[i])
 	}
 
 	pool.WaitAll()
