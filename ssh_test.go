@@ -80,7 +80,7 @@ c1exAOTSsdaKL3NDeeRkgcDDP9XKVMW7Kds17oVLR36wJ5y1CcmPtNAn
 	t.Log(rs, err)
 }
 
-func Test_SftpHost1(t *testing.T) {
+func Test_SftpHost(t *testing.T) {
 	sshParms := []SSHParm{}
 	sshParms = append(sshParms, SSHParm{
 		IP:        "172.16.20.45",

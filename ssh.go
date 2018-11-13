@@ -317,7 +317,7 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 				session := &HostSession{
 					Username: sshParm.Username,
 					Password: "",
-					Hostname: sshParm.Username,
+					Hostname: sshParm.IP,
 					Port:     sshParm.Port,
 					Auths:    auths[i],
 				}
