@@ -2,15 +2,16 @@ package sshexec
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"time"
-	"golang.org/x/crypto/ssh"
+
 	"github.com/pkg/sftp"
-	"io"
-	"errors"
-	"fmt"
+	"golang.org/x/crypto/ssh"
 )
 
 // ssh session
@@ -18,7 +19,7 @@ import (
 type HostSession struct {
 	Username string
 	Password string
-	Hostname string
+	IP       string
 	Signers  []ssh.Signer
 	Port     int
 	Auths    []ssh.AuthMethod
@@ -28,7 +29,7 @@ type HostSession struct {
 
 type ExecResult struct {
 	Id             int
-	Host           string
+	IP             string
 	Command        string
 	LocalFilePath  string
 	RemoteFilePath string
@@ -36,42 +37,43 @@ type ExecResult struct {
 	StartTime      time.Time
 	EndTime        time.Time
 	Error          error
+	ErrorInfo      string
 }
 
 // execute the command and return a result structure
 
-func (exec *HostSession) Exec(id int, command string, config ssh.ClientConfig) (*ExecResult) {
+func (exec *HostSession) Exec(id int, command string, config ssh.ClientConfig) *ExecResult {
 
 	result := &ExecResult{
-		Id:        id,
-		Host:      exec.Hostname,
-		Command:   command,
+		Id:      id,
+		IP:      exec.IP,
+		Command: command,
 	}
 
-	client, err := ssh.Dial("tcp", exec.Hostname + ":" + strconv.Itoa(exec.Port), &config)
-
+	client, err := ssh.Dial("tcp", exec.IP+":"+strconv.Itoa(exec.Port), &config)
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v连接异常：%v", exec.IP, err.Error())
 		return result
 	}
+	defer client.Close()
 
 	session, err := client.NewSession()
-
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v连接异常：%v", exec.IP, err.Error())
 		return result
 	}
-
 	defer session.Close()
 
 	var b bytes.Buffer
-
 	session.Stdout = &b
 	var b1 bytes.Buffer
 	session.Stderr = &b1
 	start := time.Now()
 	if err := session.Run(command); err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v执行异常：%v", exec.IP, err.Error())
 		result.Result = b1.String()
 		return result
 	}
@@ -82,45 +84,46 @@ func (exec *HostSession) Exec(id int, command string, config ssh.ClientConfig) (
 	return result
 }
 
-
 // execute the command and return a result structure
 
-func (exec *HostSession) Transfer(id int, localFilePath  string, remoteFilePath string, config ssh.ClientConfig) (*ExecResult) {
+func (exec *HostSession) Transfer(id int, localFilePath string, remoteFilePath string, config ssh.ClientConfig) *ExecResult {
 
 	result := &ExecResult{
-		Id:        id,
-		Host:      exec.Hostname,
-		LocalFilePath:   localFilePath,
-		RemoteFilePath:   remoteFilePath,
+		Id:             id,
+		IP:             exec.IP,
+		LocalFilePath:  localFilePath,
+		RemoteFilePath: remoteFilePath,
 	}
 	start := time.Now()
 	result.StartTime = start
-	client, err := ssh.Dial("tcp", exec.Hostname + ":" + strconv.Itoa(exec.Port), &config)
-
+	client, err := ssh.Dial("tcp", exec.IP+":"+strconv.Itoa(exec.Port), &config)
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v连接异常：%v", exec.IP, err.Error())
 		return result
 	}
+	defer client.Close()
 
 	session, err := client.NewSession()
-
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v连接异常：%v", exec.IP, err.Error())
 		return result
 	}
-
 	defer session.Close()
+
 	var fileSize int64
 	if s, err := os.Stat(localFilePath); err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v文件不存在：%v", localFilePath, err.Error())
 		return result
-
 	} else {
 		fileSize = s.Size()
 	}
 	srcFile, err := os.Open(localFilePath)
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v文件打开异常：%v", localFilePath, err.Error())
 		return result
 	}
 
@@ -131,6 +134,7 @@ func (exec *HostSession) Transfer(id int, localFilePath  string, remoteFilePath 
 	// create sftp client
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v连接异常：%v", exec.IP, err.Error())
 		return result
 	}
 	defer sftpClient.Close()
@@ -138,6 +142,7 @@ func (exec *HostSession) Transfer(id int, localFilePath  string, remoteFilePath 
 	dstFile, err := sftpClient.Create(remoteFilePath)
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v创建文件%v异常：%v", exec.IP, remoteFilePath, err.Error())
 		return result
 	}
 	defer dstFile.Close()
@@ -146,10 +151,12 @@ func (exec *HostSession) Transfer(id int, localFilePath  string, remoteFilePath 
 	n, err := io.Copy(dstFile, io.LimitReader(srcFile, fileSize))
 	if err != nil {
 		result.Error = err
+		result.ErrorInfo = fmt.Sprintf("%v文件传输异常：%v", exec.IP, err.Error())
 		return result
 	}
 	if n != fileSize {
 		result.Error = errors.New(fmt.Sprintf("copy: expected %v bytes, got %d", fileSize, n))
+		result.ErrorInfo = fmt.Sprintf("%v文件传输异常：%v", exec.IP, err.Error())
 		return result
 	}
 	end := time.Now()

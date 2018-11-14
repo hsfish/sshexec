@@ -79,7 +79,7 @@ func (s *SSHExecAgent) SshHostByKey(hosts []string, port int, user string, cmd s
 				session := &HostSession{
 					Username: user,
 					Password: "",
-					Hostname: hosts[count],
+					IP:       hosts[count],
 					Port:     port,
 					Auths:    authKeys,
 				}
@@ -96,7 +96,7 @@ func (s *SSHExecAgent) SshHostByKey(hosts []string, port int, user string, cmd s
 		jobId, _ := res.Jobid.(int)
 		if res.Timedout {
 			returnResult[jobId].Id = jobId
-			returnResult[jobId].Host = hosts[jobId]
+			returnResult[jobId].IP = hosts[jobId]
 			returnResult[jobId].Command = cmd
 			returnResult[jobId].Error = errors.New("ssh time out")
 			errorText += "the host " + hosts[jobId] + " commond  exec time out."
@@ -104,7 +104,7 @@ func (s *SSHExecAgent) SshHostByKey(hosts []string, port int, user string, cmd s
 			execResult, _ := res.Result.(ExecResult)
 			returnResult[jobId] = execResult
 			if execResult.Error != nil {
-				errorText += "the host " + execResult.Host + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
+				errorText += "the host " + execResult.IP + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
 			}
 		}
 	}
@@ -148,7 +148,7 @@ func (s *SSHExecAgent) SftpHostByKey(hosts []string, port int, user string, loca
 				session := &HostSession{
 					Username: user,
 					Password: "",
-					Hostname: hosts[count],
+					IP:       hosts[count],
 					Port:     port,
 					Auths:    authKeys,
 				}
@@ -165,7 +165,7 @@ func (s *SSHExecAgent) SftpHostByKey(hosts []string, port int, user string, loca
 		jobId, _ := res.Jobid.(int)
 		if res.Timedout {
 			returnResult[jobId].Id = jobId
-			returnResult[jobId].Host = hosts[jobId]
+			returnResult[jobId].IP = hosts[jobId]
 			returnResult[jobId].LocalFilePath = localFilePath
 			returnResult[jobId].RemoteFilePath = remoteFilePath
 			returnResult[jobId].Error = errors.New("ssh time out")
@@ -174,7 +174,7 @@ func (s *SSHExecAgent) SftpHostByKey(hosts []string, port int, user string, loca
 			execResult, _ := res.Result.(ExecResult)
 			returnResult[jobId] = execResult
 			if execResult.Error != nil {
-				errorText += "the host " + execResult.Host + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
+				errorText += "the host " + execResult.IP + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
 			}
 		}
 	}
@@ -218,8 +218,12 @@ func InitSSHAuthMethod(loginType, password string) []ssh.AuthMethod {
 
 func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, error) {
 	if len(sshParms) == 0 {
-		log.Println("no hosts")
-		return nil, errors.New("no hosts")
+		return []ExecResult{
+			ExecResult{
+				Error:     fmt.Errorf("no hosts"),
+				ErrorInfo: "目标机为空",
+			},
+		}, errors.New("no hosts")
 	}
 	if s.Worker == 0 {
 		s.Worker = 40
@@ -231,8 +235,17 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 	for _, sshParm := range sshParms {
 		authKey := InitSSHAuthMethod(sshParm.LoginType, sshParm.Password)
 		if len(authKey) == 0 {
-			log.Println("the user no key")
-			return nil, fmt.Errorf("the %v no password and no key", sshParm.IP)
+			errorInfo := fmt.Sprintf("目标机：%v未配置ssh账户和密钥", sshParm.IP)
+			if sshParm.LoginType == SSH_LOGIN_KEY {
+				errorInfo = fmt.Sprintf("目标机：%v配置的密钥有误", sshParm.IP)
+			}
+			return []ExecResult{
+				ExecResult{
+					IP:        sshParm.IP,
+					Error:     fmt.Errorf("the %v no password and no key", sshParm.IP),
+					ErrorInfo: errorInfo,
+				},
+			}, fmt.Errorf("the %v no password and no key", sshParm.IP)
 		}
 		auths = append(auths, authKey)
 	}
@@ -244,7 +257,7 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 				session := &HostSession{
 					Username: sshParm.Username,
 					Password: "",
-					Hostname: sshParm.IP,
+					IP:       sshParm.IP,
 					Port:     sshParm.Port,
 					Auths:    auth,
 				}
@@ -268,7 +281,7 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 		jobId, _ := res.Jobid.(int)
 		if res.Timedout {
 			returnResult[jobId].Id = jobId
-			returnResult[jobId].Host = sshParms[jobId].IP
+			returnResult[jobId].IP = sshParms[jobId].IP
 			returnResult[jobId].Command = cmd
 			returnResult[jobId].Error = errors.New("ssh time out")
 			errorText += "the host " + sshParms[jobId].IP + " commond  exec time out."
@@ -276,13 +289,12 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 			execResult, _ := res.Result.(ExecResult)
 			returnResult[jobId] = execResult
 			if execResult.Error != nil {
-				errorText += "the host " + execResult.Host + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
+				errorText += "the host " + execResult.IP + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
 			}
 		}
 	}
 	if errorText != "" {
 		return returnResult, errors.New(errorText)
-
 	} else {
 		return returnResult, nil
 	}
@@ -290,8 +302,12 @@ func (s *SSHExecAgent) SshHost(sshParms []SSHParm, cmd string) ([]ExecResult, er
 
 func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remoteFilePath string) ([]ExecResult, error) {
 	if len(sshParms) == 0 {
-		log.Println("no hosts")
-		return nil, errors.New("no hosts")
+		return []ExecResult{
+			ExecResult{
+				Error:     fmt.Errorf("no hosts"),
+				ErrorInfo: "目标机为空",
+			},
+		}, errors.New("no hosts")
 	}
 	if s.Worker == 0 {
 		s.Worker = 40
@@ -303,8 +319,17 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 	for _, sshParm := range sshParms {
 		authKey := InitSSHAuthMethod(sshParm.LoginType, sshParm.Password)
 		if len(authKey) == 0 {
-			log.Println("the user no key")
-			return nil, fmt.Errorf("the %v no password and no key", sshParm.IP)
+			errorInfo := fmt.Sprintf("目标机：%v未配置ssh账户和密钥", sshParm.IP)
+			if sshParm.LoginType == SSH_LOGIN_KEY {
+				errorInfo = fmt.Sprintf("目标机：%v配置的密钥有误", sshParm.IP)
+			}
+			return []ExecResult{
+				ExecResult{
+					IP:        sshParm.IP,
+					Error:     fmt.Errorf("the %v no password and no key", sshParm.IP),
+					ErrorInfo: errorInfo,
+				},
+			}, fmt.Errorf("the %v no password and no key", sshParm.IP)
 		}
 		auths = append(auths, authKey)
 	}
@@ -316,7 +341,7 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 				session := &HostSession{
 					Username: sshParm.Username,
 					Password: "",
-					Hostname: sshParm.IP,
+					IP:       sshParm.IP,
 					Port:     sshParm.Port,
 					Auths:    auth,
 				}
@@ -340,7 +365,7 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 		jobId, _ := res.Jobid.(int)
 		if res.Timedout {
 			returnResult[jobId].Id = jobId
-			returnResult[jobId].Host = sshParms[jobId].IP
+			returnResult[jobId].IP = sshParms[jobId].IP
 			returnResult[jobId].LocalFilePath = localFilePath
 			returnResult[jobId].RemoteFilePath = remoteFilePath
 			returnResult[jobId].Error = errors.New("ssh time out")
@@ -349,13 +374,12 @@ func (s *SSHExecAgent) SftpHost(sshParms []SSHParm, localFilePath string, remote
 			execResult, _ := res.Result.(ExecResult)
 			returnResult[jobId] = execResult
 			if execResult.Error != nil {
-				errorText += "the host " + execResult.Host + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
+				errorText += "the host " + execResult.IP + " commond  exec error.\n" + "rsult info :" + execResult.Result + ".\nerror info :" + execResult.Error.Error()
 			}
 		}
 	}
 	if errorText != "" {
 		return returnResult, errors.New(errorText)
-
 	} else {
 		return returnResult, nil
 	}
