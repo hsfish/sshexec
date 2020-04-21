@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -181,6 +182,9 @@ func (exec *HostSession) GenerateConfig() ssh.ClientConfig {
 	config := ssh.ClientConfig{
 		User: exec.Username,
 		Auth: auths,
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
+		},
 	}
 
 	config.Ciphers = []string{"aes128-cbc", "3des-cbc"}
