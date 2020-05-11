@@ -187,7 +187,9 @@ func (exec *HostSession) GenerateConfig() ssh.ClientConfig {
 		},
 	}
 
-	config.Ciphers = []string{"aes128-cbc", "3des-cbc"}
+	config.SetDefaults()
+
+	config.Ciphers = append(config.Ciphers, "aes128-cbc", "3des-cbc")
 
 	return config
 }
